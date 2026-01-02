@@ -397,55 +397,23 @@ const Proposals: React.FC<ProposalsProps> = ({ deals, contacts, proposals, onAdd
       {/* Improved Print Styles */}
       <style>{`
         @media print {
-          /* Reset total da página */
-          body, html {
-            height: auto !important;
-            margin: 0 !important;
-            padding: 0 !important;
-            overflow: visible !important;
-            background: #FFFFFF !important;
+          /* Hide everything first */
+          body * {
+            visibility: hidden;
           }
-
-          /* Esconder toda a UI do CRM e da Modal, deixando apenas os pais necessários visíveis */
-          aside, header, nav, .print\\:hidden, button, select, .modal-overlay > div:first-child {
-            display: none !important;
+          /* Show only the proposal and its contents */
+          #proposal-printable, #proposal-printable * {
+            visibility: visible;
           }
-
-          /* Remover backgrounds de overlay e centrar conteúdo */
-          .modal-overlay {
-            background: transparent !important;
-            position: absolute !important;
-            padding: 0 !important;
-            margin: 0 !important;
-            display: block !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            z-index: 9999 !important;
-          }
-
-          /* Garantir que a caixa branca da modal suma e apenas o #proposal-printable fique */
-          .modal-overlay > div {
-             box-shadow: none !important;
-             border: none !important;
-             max-height: none !important;
-             padding: 0 !important;
-             margin: 0 !important;
-             width: 100% !important;
-          }
-
           #proposal-printable {
-            display: block !important;
-            visibility: visible !important;
-            position: relative !important;
-            width: 100% !important;
-            margin: 0 !important;
-            padding: 30px !important;
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100%;
             border: none !important;
-            box-shadow: none !important;
+            padding: 20px !important;
           }
-
-          /* Fix para cores sumindo em alguns navegadores */
+          /* Ensure backgrounds print */
           .bg-smart-green { background-color: #31D889 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .bg-smart-black { background-color: #000000 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           .text-smart-green { color: #31D889 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
