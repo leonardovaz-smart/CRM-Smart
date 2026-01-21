@@ -44,15 +44,27 @@ const App: React.FC = () => {
   const [proposals, setProposals] = useState<Proposal[]>([]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      const wasLoggedOut = !currentUser;
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // Validação de domínio restrita
+        const userEmail = firebaseUser.email || '';
+        if (!userEmail.endsWith('@wearesmart.com.br')) {
+          await signOut(auth);
+          setCurrentUser(null);
+          setAuthError("Acesso negado. Utilize seu e-mail corporativo @wearesmart.com.br");
+          alert('Acesso restrito a funcionários da Smart');
+          setLoading(false);
+          return;
+        }
+
+        const wasLoggedOut = !currentUser;
         setCurrentUser({
           id: firebaseUser.uid,
           name: firebaseUser.displayName || 'Usuário Smart',
           role: 'Estrategista Smart',
           avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.displayName}&background=31D889&color=000`
         });
+        
         if (wasLoggedOut) {
           setActiveView('dashboard');
         }
@@ -63,6 +75,7 @@ const App: React.FC = () => {
       setLoading(false);
     });
 
+    // Carregamento de dados locais
     const savedContacts = localStorage.getItem('smart_contacts');
     if (savedContacts) setContacts(JSON.parse(savedContacts));
 
@@ -90,11 +103,11 @@ const App: React.FC = () => {
     } catch (error: any) {
       console.error("Erro no login:", error);
       if (error.code === 'auth/unauthorized-domain') {
-        setAuthError("Domínio não autorizado. Você precisa adicionar este domínio nas configurações do Firebase Authentication > Domínios Autorizados.");
+        setAuthError("Domínio não autorizado no Firebase. Adicione este endereço em Authorized Domains.");
       } else if (error.code === 'auth/popup-closed-by-user') {
-        setAuthError("O login foi cancelado. Tente novamente clicando no botão.");
+        setAuthError("O login foi cancelado.");
       } else {
-        setAuthError("Houve um problema ao conectar com o Google. Verifique sua conexão ou configurações do Firebase.");
+        setAuthError("Falha na conexão com o Google.");
       }
     }
   };
@@ -103,6 +116,7 @@ const App: React.FC = () => {
     if (confirm('Deseja mesmo sair do escritório?')) {
       try {
         await signOut(auth);
+        setCurrentUser(null);
       } catch (error) {
         console.error("Erro ao sair:", error);
       }
@@ -175,7 +189,7 @@ const App: React.FC = () => {
             <span className="font-black uppercase italic tracking-tighter text-lg">Entrar com Google</span>
           </button>
           
-          <p className="mt-10 text-[10px] text-gray-400 font-bold uppercase tracking-widest">Acesso exclusivo para o time Smart.</p>
+          <p className="mt-10 text-[10px] text-gray-400 font-bold uppercase tracking-widest">Acesso restrito ao domínio @wearesmart.com.br</p>
         </div>
       </div>
     );
