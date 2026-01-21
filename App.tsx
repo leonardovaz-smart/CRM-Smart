@@ -9,7 +9,7 @@ import Proposals from './components/Proposals';
 import { Contact, Deal, Task, User, DealStage, Proposal } from './types';
 import { auth, googleProvider, db } from './firebase';
 import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, setDoc } from 'firebase/firestore';
 
 const INITIAL_CONTACTS: Contact[] = [
   { id: '1', name: 'Juliana Silva', company: 'Ambev', email: 'juliana@ambev.com.br', phone: '(11) 98888-8888', lastContact: '20/10/2023', status: 'active', jobLevel: 'Diretor' },
@@ -28,11 +28,11 @@ const App: React.FC = () => {
   const [proposals, setProposals] = useState<Proposal[]>([]);
 
   useEffect(() => {
-    // Uso da função modular onAuthStateChanged importada de firebase/auth
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         const userEmail = firebaseUser.email || '';
         
+        // Validação de domínio obrigatória
         if (!userEmail.endsWith('@wearesmart.com.br')) {
           await signOut(auth);
           setCurrentUser(null);
@@ -42,34 +42,54 @@ const App: React.FC = () => {
           return;
         }
 
-        const userRef = doc(db, "users", firebaseUser.uid);
-        const userSnap = await getDoc(userRef);
-        
-        const userData: User = {
-          id: firebaseUser.uid,
-          name: firebaseUser.displayName || 'Usuário Smart',
-          role: 'Estrategista Smart',
-          avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.displayName}&background=31D889&color=000`,
-          email: firebaseUser.email || ''
-        };
+        try {
+          // Referência do documento usando o UID como ID único
+          const userRef = doc(db, "users", firebaseUser.uid);
+          
+          // Preparação dos dados conforme solicitado
+          const userDataToSave = {
+            uid: firebaseUser.uid,
+            displayName: firebaseUser.displayName || 'Usuário Smart',
+            email: firebaseUser.email,
+            photoURL: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.displayName}&background=31D889&color=000`,
+            // Mantendo campos extras para compatibilidade com a interface do CRM
+            name: firebaseUser.displayName || 'Usuário Smart',
+            role: 'Estrategista Smart',
+            avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.displayName}&background=31D889&color=000`,
+            lastLogin: new Date().toISOString()
+          };
 
-        if (!userSnap.exists()) {
-          await setDoc(userRef, userData);
-        }
+          // Gravação/Atualização robusta no Firestore
+          await setDoc(userRef, userDataToSave, { merge: true });
+          console.log("Monitor de Auth: Usuário verificado e salvo/atualizado no banco.");
 
-        const wasLoggedOut = !currentUser;
-        setCurrentUser(userData);
-        
-        if (wasLoggedOut) {
-          setActiveView('dashboard');
+          // Atualização do estado local para a UI
+          const userData: User = {
+            id: firebaseUser.uid,
+            name: userDataToSave.name,
+            role: userDataToSave.role,
+            avatar: userDataToSave.avatar,
+            email: userDataToSave.email || ''
+          };
+
+          const wasLoggedOut = !currentUser;
+          setCurrentUser(userData);
+          
+          if (wasLoggedOut) {
+            setActiveView('dashboard');
+          }
+          setAuthError(null);
+        } catch (error) {
+          console.error("Erro ao salvar usuário no Firestore:", error);
+          alert("Erro crítico: Não foi possível registrar seu perfil no banco de dados.");
         }
-        setAuthError(null);
       } else {
         setCurrentUser(null);
       }
       setLoading(false);
     });
 
+    // Carregamento de dados locais
     const savedContacts = localStorage.getItem('smart_contacts');
     if (savedContacts) setContacts(JSON.parse(savedContacts));
 
@@ -85,6 +105,7 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [currentUser]);
 
+  // Sincronização com LocalStorage
   useEffect(() => { localStorage.setItem('smart_contacts', JSON.stringify(contacts)); }, [contacts]);
   useEffect(() => { localStorage.setItem('smart_deals', JSON.stringify(deals)); }, [deals]);
   useEffect(() => { localStorage.setItem('smart_tasks', JSON.stringify(tasks)); }, [tasks]);
@@ -93,10 +114,15 @@ const App: React.FC = () => {
   const handleLogin = async () => {
     setAuthError(null);
     try {
+      // Login simplificado; a persistência é tratada pelo onAuthStateChanged acima
       await signInWithPopup(auth, googleProvider);
     } catch (error: any) {
-      console.error("Erro no login:", error);
-      setAuthError("Falha na conexão com o Google.");
+      console.error("Erro no popup de login:", error);
+      if (error.code === 'auth/popup-closed-by-user') {
+        setAuthError("O popup foi fechado antes de completar o login.");
+      } else {
+        setAuthError("Falha na conexão com o Google.");
+      }
     }
   };
 
