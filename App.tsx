@@ -6,12 +6,13 @@ import Contacts from './components/Contacts';
 import Deals from './components/Deals';
 import Tasks from './components/Tasks';
 import Proposals from './components/Proposals';
-import { Contact, Deal, Task, TEAM_MEMBERS, User, DealStage, Proposal } from './types';
+import { Contact, Deal, Task, User, DealStage, Proposal } from './types';
+import { auth, googleProvider } from './firebase';
+import { signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
 
 const INITIAL_CONTACTS: Contact[] = [
   { id: '1', name: 'Juliana Silva', company: 'Ambev', email: 'juliana@ambev.com.br', phone: '(11) 98888-8888', lastContact: '20/10/2023', status: 'active', jobLevel: 'Diretor' },
   { id: '2', name: 'Rodrigo Costa', company: 'XP Inc', email: 'rodrigo@xp.com.br', phone: '(11) 97777-7777', lastContact: '18/10/2023', status: 'lead', jobLevel: 'Gerente' },
-  { id: '3', name: 'Fernanda Lima', company: 'Natura', email: 'fernanda@natura.net', phone: '(11) 96666-6666', lastContact: '22/10/2023', status: 'active', jobLevel: 'C-Level' },
 ];
 
 const INITIAL_DEALS: Deal[] = [
@@ -19,7 +20,7 @@ const INITIAL_DEALS: Deal[] = [
     id: '1', 
     title: 'Campanha Interna Q4', 
     contactId: '1', 
-    responsibleId: '1',
+    responsibleId: 'me',
     value: 45000, 
     stage: 'proposal', 
     expectedCloseDate: '15/11/2023',
@@ -29,34 +30,39 @@ const INITIAL_DEALS: Deal[] = [
     engagementModel: 'job',
     description: 'Campanha de reconhecimento para o time de vendas global.'
   },
-  { 
-    id: '2', 
-    title: 'Employer Branding Review', 
-    contactId: '2', 
-    responsibleId: '2',
-    value: 25000, 
-    stage: 'negotiation', 
-    expectedCloseDate: '30/10/2023',
-    products: ['Consultoria de EVP'],
-    temperature: 'warm',
-    saleType: 'upsell',
-    engagementModel: 'fee',
-    description: 'Revisão semestral do posicionamento de marca empregadora.'
-  },
 ];
 
 const App: React.FC = () => {
   const [activeView, setActiveView] = useState('dashboard');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
+  
   const [contacts, setContacts] = useState<Contact[]>(INITIAL_CONTACTS);
   const [deals, setDeals] = useState<Deal[]>(INITIAL_DEALS);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('smart_user');
-    if (savedUser) setCurrentUser(JSON.parse(savedUser));
-    
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      const wasLoggedOut = !currentUser;
+      if (firebaseUser) {
+        setCurrentUser({
+          id: firebaseUser.uid,
+          name: firebaseUser.displayName || 'Usuário Smart',
+          role: 'Estrategista Smart',
+          avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.displayName}&background=31D889&color=000`
+        });
+        if (wasLoggedOut) {
+          setActiveView('dashboard');
+        }
+        setAuthError(null);
+      } else {
+        setCurrentUser(null);
+      }
+      setLoading(false);
+    });
+
     const savedContacts = localStorage.getItem('smart_contacts');
     if (savedContacts) setContacts(JSON.parse(savedContacts));
 
@@ -68,21 +74,39 @@ const App: React.FC = () => {
 
     const savedProposals = localStorage.getItem('smart_proposals');
     if (savedProposals) setProposals(JSON.parse(savedProposals));
-  }, []);
+
+    return () => unsubscribe();
+  }, [currentUser]);
 
   useEffect(() => { localStorage.setItem('smart_contacts', JSON.stringify(contacts)); }, [contacts]);
   useEffect(() => { localStorage.setItem('smart_deals', JSON.stringify(deals)); }, [deals]);
   useEffect(() => { localStorage.setItem('smart_tasks', JSON.stringify(tasks)); }, [tasks]);
   useEffect(() => { localStorage.setItem('smart_proposals', JSON.stringify(proposals)); }, [proposals]);
 
-  const handleLogin = (user: User) => {
-    setCurrentUser(user);
-    localStorage.setItem('smart_user', JSON.stringify(user));
+  const handleLogin = async () => {
+    setAuthError(null);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (error: any) {
+      console.error("Erro no login:", error);
+      if (error.code === 'auth/unauthorized-domain') {
+        setAuthError("Domínio não autorizado. Você precisa adicionar este domínio nas configurações do Firebase Authentication > Domínios Autorizados.");
+      } else if (error.code === 'auth/popup-closed-by-user') {
+        setAuthError("O login foi cancelado. Tente novamente clicando no botão.");
+      } else {
+        setAuthError("Houve um problema ao conectar com o Google. Verifique sua conexão ou configurações do Firebase.");
+      }
+    }
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem('smart_user');
+  const handleLogout = async () => {
+    if (confirm('Deseja mesmo sair do escritório?')) {
+      try {
+        await signOut(auth);
+      } catch (error) {
+        console.error("Erro ao sair:", error);
+      }
+    }
   };
 
   const onAddContact = (newContact: Contact) => setContacts(prev => [...prev, newContact]);
@@ -114,26 +138,44 @@ const App: React.FC = () => {
     }));
   };
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-smart-black flex flex-col items-center justify-center">
+         <div className="bg-smart-green w-16 h-16 rounded-sm flex items-center justify-center text-smart-black font-black text-4xl mb-6 animate-bounce shadow-[0_0_20px_rgba(49,216,137,0.5)]">S</div>
+         <p className="text-smart-white font-black italic tracking-tighter uppercase text-xl">Preparando o escritório...</p>
+      </div>
+    );
+  }
+
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-smart-black flex items-center justify-center p-6">
-        <div className="max-w-md w-full bg-smart-white border-2 border-smart-green p-10 rounded-3xl shadow-[10px_10px_0px_0px_rgba(49,216,137,1)]">
-          <div className="flex items-center gap-2 mb-8 justify-center">
-            <div className="bg-smart-black w-10 h-10 rounded-sm flex items-center justify-center text-smart-green font-black text-2xl">S</div>
-            <span className="text-3xl font-black tracking-tighter italic text-smart-black uppercase">SMART</span>
+        <div className="max-w-md w-full bg-smart-white border-4 border-smart-green p-12 rounded-[40px] shadow-[20px_20px_0px_0px_rgba(49,216,137,1)] text-center animate-in zoom-in-95 duration-300">
+          <div className="flex items-center gap-2 mb-10 justify-center">
+            <div className="bg-smart-black w-12 h-12 rounded-sm flex items-center justify-center text-smart-green font-black text-3xl">S</div>
+            <span className="text-4xl font-black tracking-tighter italic text-smart-black uppercase">SMART</span>
           </div>
-          <h2 className="text-2xl font-black text-center mb-2 uppercase italic tracking-tighter">Entrar no Smart CRM</h2>
-          <div className="space-y-4 mt-6">
-            {TEAM_MEMBERS.map(user => (
-              <button key={user.id} onClick={() => handleLogin(user)} className="w-full flex items-center gap-4 p-4 border-2 border-smart-black rounded-2xl hover:bg-smart-green hover:border-smart-green transition-all group">
-                <img src={user.avatar} className="w-12 h-12 rounded-full border-2 border-smart-black" alt={user.name} />
-                <div className="text-left">
-                  <p className="font-black group-hover:text-smart-black">{user.name}</p>
-                  <p className="text-xs text-gray-500 font-bold uppercase">{user.role}</p>
-                </div>
-              </button>
-            ))}
-          </div>
+          
+          <h2 className="text-3xl font-black text-smart-black mb-4 uppercase italic tracking-tighter leading-none">Bem-vindo ao<br/>seu QG Digital.</h2>
+          <p className="text-gray-500 font-bold text-sm mb-10 uppercase tracking-tight">O CRM feito para agências que brilham.</p>
+          
+          {authError && (
+            <div className="mb-8 p-4 bg-red-50 border-2 border-red-500 rounded-2xl text-red-600 text-xs font-bold leading-tight animate-in fade-in slide-in-from-top-2">
+              ⚠️ {authError}
+            </div>
+          )}
+
+          <button 
+            onClick={handleLogin} 
+            className="w-full flex items-center justify-center gap-4 p-5 bg-smart-black text-smart-white border-2 border-smart-black rounded-3xl hover:bg-smart-green hover:text-smart-black transition-all group shadow-[10px_10px_0px_0px_rgba(49,216,137,1)] active:translate-y-1 active:shadow-none"
+          >
+            <svg className="w-6 h-6" viewBox="0 0 24 24">
+                <path fill="currentColor" d="M21.35,11.1H12.18V13.83H18.69C18.36,17.64 15.19,19.27 12.19,19.27C8.36,19.27 5,16.25 5,12C5,7.9 8.2,4.73 12.2,4.73C15.29,4.73 17.1,6.7 17.1,6.7L19,4.72C19,4.72 16.56,2 12.1,2C6.42,2 2.03,6.8 2.03,12C2.03,17.05 6.16,22 12.25,22C17.6,22 21.5,18.33 21.5,12.91C21.5,11.76 21.35,11.1 21.35,11.1V11.1Z" />
+            </svg>
+            <span className="font-black uppercase italic tracking-tighter text-lg">Entrar com Google</span>
+          </button>
+          
+          <p className="mt-10 text-[10px] text-gray-400 font-bold uppercase tracking-widest">Acesso exclusivo para o time Smart.</p>
         </div>
       </div>
     );
@@ -144,18 +186,24 @@ const App: React.FC = () => {
       <Sidebar activeView={activeView} setActiveView={setActiveView} />
       <main className="pl-64 min-h-screen print:pl-0">
         <header className="h-32 border-b-2 border-smart-black bg-smart-white flex items-center justify-between px-10 sticky top-0 z-10 backdrop-blur-sm bg-white/90 print:hidden">
-          <h1 className="text-4xl font-black italic tracking-tighter uppercase leading-none">Boas-vindas ao novo escritório da Smart.</h1>
-          <div className="flex items-center gap-4">
-            <div className="text-right hidden sm:block">
-                <p className="font-black text-sm uppercase">{currentUser.name}</p>
-                <button onClick={handleLogout} className="text-[10px] font-bold text-red-500 uppercase hover:underline">Sair do Prédio</button>
+          <div>
+            <h1 className="text-4xl font-black italic tracking-tighter uppercase leading-none">Smart CRM.</h1>
+            <p className="text-[10px] font-black text-smart-green uppercase tracking-widest mt-1">Sua agência, seu controle, seu brilho.</p>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+                <p className="font-black text-sm uppercase tracking-tight">{currentUser.name}</p>
+                <button onClick={handleLogout} className="text-[10px] font-black text-red-500 uppercase hover:underline">Sair do Prédio</button>
             </div>
-            <img src={currentUser.avatar} className="w-12 h-12 rounded-full border-2 border-smart-black" alt="Profile" />
+            <div className="relative">
+              <img src={currentUser.avatar} className="w-14 h-14 rounded-full border-2 border-smart-black shadow-[4px_4px_0px_0px_rgba(49,216,137,1)]" alt="Profile" />
+              <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-smart-green rounded-full border-2 border-smart-black"></div>
+            </div>
           </div>
         </header>
 
         <div className="p-10 max-w-7xl mx-auto print:p-0">
-          {activeView === 'dashboard' && <Dashboard contacts={contacts} deals={deals} />}
+          {activeView === 'dashboard' && <Dashboard contacts={contacts} deals={deals} user={currentUser} />}
           {activeView === 'contacts' && <Contacts contacts={contacts} onAddContact={onAddContact} onUpdateContact={onUpdateContact} />}
           {activeView === 'deals' && <Deals deals={deals} contacts={contacts} onAddDeal={onAddDeal} onUpdateDeal={onUpdateDeal} onMoveDeal={onMoveDeal} />}
           {activeView === 'proposals' && <Proposals deals={deals} contacts={contacts} proposals={proposals} onAddProposal={onAddProposal} />}
