@@ -1,6 +1,7 @@
 
-import { initializeApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 import { getAnalytics } from "firebase/analytics";
 
 const firebaseConfig = {
@@ -13,7 +14,13 @@ const firebaseConfig = {
   measurementId: "G-C5VPDMZMX2"
 };
 
-const app = initializeApp(firebaseConfig);
+// 1. Inicializa o App ANTES de tudo
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+
+// 2. Inicializa os serviços usando a instância do app
 export const auth = getAuth(app);
+export const db = getFirestore(app);
 export const googleProvider = new GoogleAuthProvider();
+
+// 3. Analytics condicional
 export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;

@@ -7,29 +7,13 @@ import Deals from './components/Deals';
 import Tasks from './components/Tasks';
 import Proposals from './components/Proposals';
 import { Contact, Deal, Task, User, DealStage, Proposal } from './types';
-import { auth, googleProvider } from './firebase';
-import { signInWithPopup, onAuthStateChanged, signOut } from 'firebase/auth';
+import { auth, googleProvider, db } from './firebase';
+import { onAuthStateChanged, signInWithPopup, signOut } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
 const INITIAL_CONTACTS: Contact[] = [
   { id: '1', name: 'Juliana Silva', company: 'Ambev', email: 'juliana@ambev.com.br', phone: '(11) 98888-8888', lastContact: '20/10/2023', status: 'active', jobLevel: 'Diretor' },
   { id: '2', name: 'Rodrigo Costa', company: 'XP Inc', email: 'rodrigo@xp.com.br', phone: '(11) 97777-7777', lastContact: '18/10/2023', status: 'lead', jobLevel: 'Gerente' },
-];
-
-const INITIAL_DEALS: Deal[] = [
-  { 
-    id: '1', 
-    title: 'Campanha Interna Q4', 
-    contactId: '1', 
-    responsibleId: 'me',
-    value: 45000, 
-    stage: 'proposal', 
-    expectedCloseDate: '15/11/2023',
-    products: ['Endomarketing', 'Criação Visual'],
-    temperature: 'hot',
-    saleType: 'normal',
-    engagementModel: 'job',
-    description: 'Campanha de reconhecimento para o time de vendas global.'
-  },
 ];
 
 const App: React.FC = () => {
@@ -39,15 +23,16 @@ const App: React.FC = () => {
   const [authError, setAuthError] = useState<string | null>(null);
   
   const [contacts, setContacts] = useState<Contact[]>(INITIAL_CONTACTS);
-  const [deals, setDeals] = useState<Deal[]>(INITIAL_DEALS);
+  const [deals, setDeals] = useState<Deal[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [proposals, setProposals] = useState<Proposal[]>([]);
 
   useEffect(() => {
+    // Uso da função modular onAuthStateChanged importada de firebase/auth
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        // Validação de domínio restrita
         const userEmail = firebaseUser.email || '';
+        
         if (!userEmail.endsWith('@wearesmart.com.br')) {
           await signOut(auth);
           setCurrentUser(null);
@@ -57,13 +42,23 @@ const App: React.FC = () => {
           return;
         }
 
-        const wasLoggedOut = !currentUser;
-        setCurrentUser({
+        const userRef = doc(db, "users", firebaseUser.uid);
+        const userSnap = await getDoc(userRef);
+        
+        const userData: User = {
           id: firebaseUser.uid,
           name: firebaseUser.displayName || 'Usuário Smart',
           role: 'Estrategista Smart',
-          avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.displayName}&background=31D889&color=000`
-        });
+          avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.displayName}&background=31D889&color=000`,
+          email: firebaseUser.email || ''
+        };
+
+        if (!userSnap.exists()) {
+          await setDoc(userRef, userData);
+        }
+
+        const wasLoggedOut = !currentUser;
+        setCurrentUser(userData);
         
         if (wasLoggedOut) {
           setActiveView('dashboard');
@@ -75,7 +70,6 @@ const App: React.FC = () => {
       setLoading(false);
     });
 
-    // Carregamento de dados locais
     const savedContacts = localStorage.getItem('smart_contacts');
     if (savedContacts) setContacts(JSON.parse(savedContacts));
 
@@ -102,13 +96,7 @@ const App: React.FC = () => {
       await signInWithPopup(auth, googleProvider);
     } catch (error: any) {
       console.error("Erro no login:", error);
-      if (error.code === 'auth/unauthorized-domain') {
-        setAuthError("Domínio não autorizado no Firebase. Adicione este endereço em Authorized Domains.");
-      } else if (error.code === 'auth/popup-closed-by-user') {
-        setAuthError("O login foi cancelado.");
-      } else {
-        setAuthError("Falha na conexão com o Google.");
-      }
+      setAuthError("Falha na conexão com o Google.");
     }
   };
 
@@ -133,15 +121,12 @@ const App: React.FC = () => {
     setDeals(prev => prev.map(d => d.id === updatedDeal.id ? updatedDeal : d));
   };
   const onAddTask = (newTask: Task) => setTasks(prev => [...prev, newTask]);
-  
   const onMoveDeal = (dealId: string, newStage: DealStage) => {
     setDeals(prev => prev.map(d => d.id === dealId ? { ...d, stage: newStage } : d));
   };
-
   const onToggleTask = (taskId: string) => {
     setTasks(prev => prev.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t));
   };
-
   const onAddProposal = (newProposal: Proposal) => {
     setProposals(prev => [newProposal, ...prev]);
     setDeals(prevDeals => prevDeals.map(deal => {
@@ -169,26 +154,13 @@ const App: React.FC = () => {
             <div className="bg-smart-black w-12 h-12 rounded-sm flex items-center justify-center text-smart-green font-black text-3xl">S</div>
             <span className="text-4xl font-black tracking-tighter italic text-smart-black uppercase">SMART</span>
           </div>
-          
           <h2 className="text-3xl font-black text-smart-black mb-4 uppercase italic tracking-tighter leading-none">Bem-vindo ao<br/>seu QG Digital.</h2>
           <p className="text-gray-500 font-bold text-sm mb-10 uppercase tracking-tight">O CRM feito para agências que brilham.</p>
-          
-          {authError && (
-            <div className="mb-8 p-4 bg-red-50 border-2 border-red-500 rounded-2xl text-red-600 text-xs font-bold leading-tight animate-in fade-in slide-in-from-top-2">
-              ⚠️ {authError}
-            </div>
-          )}
-
-          <button 
-            onClick={handleLogin} 
-            className="w-full flex items-center justify-center gap-4 p-5 bg-smart-black text-smart-white border-2 border-smart-black rounded-3xl hover:bg-smart-green hover:text-smart-black transition-all group shadow-[10px_10px_0px_0px_rgba(49,216,137,1)] active:translate-y-1 active:shadow-none"
-          >
-            <svg className="w-6 h-6" viewBox="0 0 24 24">
-                <path fill="currentColor" d="M21.35,11.1H12.18V13.83H18.69C18.36,17.64 15.19,19.27 12.19,19.27C8.36,19.27 5,16.25 5,12C5,7.9 8.2,4.73 12.2,4.73C15.29,4.73 17.1,6.7 17.1,6.7L19,4.72C19,4.72 16.56,2 12.1,2C6.42,2 2.03,6.8 2.03,12C2.03,17.05 6.16,22 12.25,22C17.6,22 21.5,18.33 21.5,12.91C21.5,11.76 21.35,11.1 21.35,11.1V11.1Z" />
-            </svg>
+          {authError && <div className="mb-8 p-4 bg-red-50 border-2 border-red-500 rounded-2xl text-red-600 text-xs font-bold leading-tight animate-in fade-in slide-in-from-top-2">⚠️ {authError}</div>}
+          <button onClick={handleLogin} className="w-full flex items-center justify-center gap-4 p-5 bg-smart-black text-smart-white border-2 border-smart-black rounded-3xl hover:bg-smart-green hover:text-smart-black transition-all group shadow-[10px_10px_0px_0px_rgba(49,216,137,1)] active:translate-y-1 active:shadow-none">
+            <svg className="w-6 h-6" viewBox="0 0 24 24"><path fill="currentColor" d="M21.35,11.1H12.18V13.83H18.69C18.36,17.64 15.19,19.27 12.19,19.27C8.36,19.27 5,16.25 5,12C5,7.9 8.2,4.73 12.2,4.73C15.29,4.73 17.1,6.7 17.1,6.7L19,4.72C19,4.72 16.56,2 12.1,2C6.42,2 2.03,6.8 2.03,12C2.03,17.05 6.16,22 12.25,22C17.6,22 21.5,18.33 21.5,12.91C21.5,11.76 21.35,11.1 21.35,11.1V11.1Z" /></svg>
             <span className="font-black uppercase italic tracking-tighter text-lg">Entrar com Google</span>
           </button>
-          
           <p className="mt-10 text-[10px] text-gray-400 font-bold uppercase tracking-widest">Acesso restrito ao domínio @wearesmart.com.br</p>
         </div>
       </div>
@@ -215,7 +187,6 @@ const App: React.FC = () => {
             </div>
           </div>
         </header>
-
         <div className="p-10 max-w-7xl mx-auto print:p-0">
           {activeView === 'dashboard' && <Dashboard contacts={contacts} deals={deals} user={currentUser} />}
           {activeView === 'contacts' && <Contacts contacts={contacts} onAddContact={onAddContact} onUpdateContact={onUpdateContact} />}

@@ -71,10 +71,16 @@ export interface User {
   name: string;
   role: string;
   avatar: string;
+  email: string;
 }
 
+// Added missing TEAM_MEMBERS constant
 export const TEAM_MEMBERS: User[] = [
-  { id: '1', name: 'Atendimento Estrela', role: 'Account Manager', avatar: 'https://picsum.photos/seed/user1/100/100' },
-  { id: '2', name: 'Criativo Genial', role: 'Art Director', avatar: 'https://picsum.photos/seed/user2/100/100' },
-  { id: '3', name: 'Smart Bot', role: 'IA Assistant', avatar: 'https://picsum.photos/seed/user3/100/100' }
+  { 
+    id: '1', 
+    name: 'Estrategista Smart', 
+    role: 'Líder de Negócios', 
+    avatar: 'https://ui-avatars.com/api/?name=Estrategista+Smart&background=31D889&color=000', 
+    email: 'estrategista@wearesmart.com.br' 
+  }
 ];
